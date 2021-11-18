@@ -41,34 +41,34 @@ func New(name string) (*Cache, error) {
 }
 
 // Finalise atomically adds a previously created file or directory to the Cache.
-func (c *Cache) Finalise(path string) error {
+func (c *Cache) Finalise(path string) (string, error) {
 	if !strings.HasPrefix(path, c.root) {
-		return fmt.Errorf("cannot finalise path outside cache root")
+		return "", fmt.Errorf("cannot finalise path outside cache root")
 	}
 	dest := strings.TrimSuffix(path, filepath.Ext(path))
 
 	// First, store the old link if any, so we can remove its target.
 	oldDest, err := os.Readlink(dest)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read link: %w", err)
+		return "", fmt.Errorf("failed to read link: %w", err)
 	}
 
 	// Next create a temporary symlink pointing to the new destination.
 	tmpSymlink := fmt.Sprintf("%s.%x", dest, time.Now().UnixNano())
 	err = os.Symlink(path, tmpSymlink)
 	if err != nil {
-		return fmt.Errorf("failed to finalise: %w", err)
+		return "", fmt.Errorf("failed to finalise: %w", err)
 	}
 
 	// Then atomically rename the new symlink to the final destination symlink.
 	err = os.Rename(tmpSymlink, dest)
 	if err != nil {
-		return fmt.Errorf("failed to finalise: %w", err)
+		return "", fmt.Errorf("failed to finalise: %w", err)
 	}
 	if oldDest != "" {
 		_ = os.RemoveAll(oldDest)
 	}
-	return nil
+	return dest, nil
 }
 
 // Mkdir creates a directory in the cache.
@@ -123,6 +123,14 @@ func (c *Cache) Remove(key string) error {
 		_ = os.RemoveAll(oldDest)
 	}
 	return nil
+}
+
+// Path returns the path to a cache entry if it exists.
+func (c *Cache) Path(key string) (string, error) {
+	key = hash(key, false)
+	path := filepath.Join(c.root, key[:2], key)
+	_, err := os.Stat(path)
+	return path, err
 }
 
 // Open a file or directory in the Cache.

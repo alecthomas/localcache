@@ -1,7 +1,7 @@
-# Local cache manager
+# Local atomic cache manager
 
-I repeatedly find myself writing partitioned keyed caching 
-systems, akin to Go's module cache. To DRY myself I created this.
+I repeatedly find myself writing partitioned keyed caching systems, akin to Go's module cache. To DRY myself I created
+this.
 
 It provides:
 

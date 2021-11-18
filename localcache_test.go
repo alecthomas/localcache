@@ -17,7 +17,7 @@ func TestCache(t *testing.T) {
 
 	dir, err := cache.Mkdir("test")
 	require.NoError(t, err)
-	err = cache.Finalise(dir)
+	_, err = cache.Finalise(dir)
 	require.NoError(t, err)
 
 	f, err := cache.Open("test")
@@ -29,7 +29,7 @@ func TestCache(t *testing.T) {
 	_, err = f.WriteString("hello")
 	require.NoError(t, err)
 	_ = f.Close()
-	err = cache.Finalise(f.Name())
+	_, err = cache.Finalise(f.Name())
 	require.NoError(t, err)
 
 	f, err = cache.Open("test")
