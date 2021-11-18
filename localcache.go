@@ -75,6 +75,10 @@ func (c *Cache) Finalise(path string) (string, error) {
 //
 // Finalise() must be called with the returned path to atomically
 // add the created directory to the Cache.
+//
+//     dir, err := cache.Mkdir("my-key")
+//     err = f.Close()
+//     err = cache.Finalise(dir)
 func (c *Cache) Mkdir(key string) (string, error) {
 	path, err := c.preparePath(key)
 	if err != nil {
@@ -91,6 +95,10 @@ func (c *Cache) Mkdir(key string) (string, error) {
 //
 // Finalise() must be called with the returned os.File's path to atomically
 // add the created file to the Cache.
+//
+//     f, err := cache.Create("my-key")
+//     err = f.Close()
+//     err = cache.Finalise(f.Name())
 func (c *Cache) Create(key string) (*os.File, error) {
 	path, err := c.preparePath(key)
 	if err != nil {
