@@ -14,11 +14,11 @@ It provides:
 cache, err := localcache.New("myapp")
 
 // Create a temporarily unaddressable file in the cache.
-f, err := cache.Create("some-key")
+tx, f, err := cache.Create("some-key")
 // Write to f
 
-// Make the file addressable.
-err = cache.Finalise(f.Name())
+// Commit the file to the cache.
+err = cache.Commit(tx)
 
 // Load the cache entry back.
 data, err := cache.ReadFile("some-key")
@@ -27,8 +27,8 @@ data, err := cache.ReadFile("some-key")
 data, err := cache.Open("some-key")
 
 // Create a temporarily unaddressable directory with the same key as the previous file.
-dir, err := cache.Mkdir("some-key")
+tx, dir, err := cache.Mkdir("some-key")
 
 // Atomically replace the previous file with the new directory.
-err := cache.Finalise(dir)
+err := cache.Commit(tx)
 ```

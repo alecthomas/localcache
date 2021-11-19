@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+// Transaction key for an uncommitted cache entry.
+type Transaction string
+
+func (t Transaction) path(root string) string { return filepath.Join(root, string(t)[:2], string(t)) }
+
+// Cache type.
 type Cache struct{ root string }
 
 // NewForTesting creates a new Cache for testing.
@@ -40,12 +46,19 @@ func New(name string) (*Cache, error) {
 	return &Cache{root}, nil
 }
 
-// Finalise atomically adds a previously created file or directory to the Cache.
-func (c *Cache) Finalise(path string) (string, error) {
+// Commit atomically commits an in-flight file or directory creation Transaction to the Cache.
+func (c *Cache) Commit(key Transaction) (string, error) {
+	path := key.path(c.root)
 	if !strings.HasPrefix(path, c.root) {
 		return "", fmt.Errorf("cannot finalise path outside cache root")
 	}
 	dest := strings.TrimSuffix(path, filepath.Ext(path))
+
+	// Check if the file we're committing actually exists.
+	_, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
 
 	// First, store the old link if any, so we can remove its target.
 	oldDest, err := os.Readlink(dest)
@@ -71,44 +84,50 @@ func (c *Cache) Finalise(path string) (string, error) {
 	return dest, nil
 }
 
+// Rollback reverts an in-flight file or directory creation Transaction.
+func (c *Cache) Rollback(key Transaction) error {
+	path := key.path(c.root)
+	return os.RemoveAll(path)
+}
+
 // Mkdir creates a directory in the cache.
 //
-// Finalise() must be called with the returned path to atomically
+// Commit() must be called with the returned path to atomically
 // add the created directory to the Cache.
 //
 //     dir, err := cache.Mkdir("my-key")
 //     err = f.Close()
-//     err = cache.Finalise(dir)
-func (c *Cache) Mkdir(key string) (string, error) {
+//     err = cache.Commit(dir)
+func (c *Cache) Mkdir(key string) (Transaction, string, error) {
 	path, err := c.preparePath(key)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	err = os.Mkdir(path, 0700)
 	if err != nil {
-		return "", fmt.Errorf("could not create cache directory: %w", err)
+		return "", "", fmt.Errorf("could not create cache directory: %w", err)
 	}
-	return path, nil
+	return Transaction(filepath.Base(path)), path, nil
 }
 
 // Create a file in the Cache.
 //
-// Finalise() must be called with the returned os.File's path to atomically
+// Commit() must be called with the returned os.File's path to atomically
 // add the created file to the Cache.
 //
 //     f, err := cache.Create("my-key")
 //     err = f.Close()
-//     err = cache.Finalise(f.Name())
-func (c *Cache) Create(key string) (*os.File, error) {
+//     err = cache.Commit(f.Name())
+func (c *Cache) Create(key string) (Transaction, *os.File, error) {
 	path, err := c.preparePath(key)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, fmt.Errorf("could not create cache directory: %w", err)
+		return "", nil, fmt.Errorf("could not create cache directory: %w", err)
 	}
-	return f, nil
+	return Transaction(filepath.Base(path)), f, nil
 }
 
 // Remove cache entry atomically.
