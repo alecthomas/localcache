@@ -15,6 +15,9 @@ import (
 // Transaction key for an uncommitted cache entry.
 type Transaction string
 
+// Valid returns true if the Transaction is valid.
+func (t Transaction) Valid() bool { return t != "" }
+
 func (t Transaction) path(root string) string { return filepath.Join(root, string(t)[:2], string(t)) }
 
 // Cache type.
@@ -47,8 +50,8 @@ func New(name string) (*Cache, error) {
 }
 
 // Commit atomically commits an in-flight file or directory creation Transaction to the Cache.
-func (c *Cache) Commit(key Transaction) (string, error) {
-	path := key.path(c.root)
+func (c *Cache) Commit(tx Transaction) (string, error) {
+	path := tx.path(c.root)
 	if !strings.HasPrefix(path, c.root) {
 		return "", fmt.Errorf("cannot finalise path outside cache root")
 	}
@@ -85,21 +88,51 @@ func (c *Cache) Commit(key Transaction) (string, error) {
 }
 
 // Rollback reverts an in-flight file or directory creation Transaction.
-func (c *Cache) Rollback(key Transaction) error {
-	path := key.path(c.root)
+func (c *Cache) Rollback(tx Transaction) error {
+	path := tx.path(c.root)
 	return os.RemoveAll(path)
+}
+
+// RollbackOnError is a convenience method for use with defer.
+//
+// It will Rollback on error, however Commit must be called manually.
+//
+//     defer cache.RollbackOnError(tx, &err)
+func (c *Cache) RollbackOnError(tx Transaction, err *error) {
+	if *err != nil {
+		rberr := c.Rollback(tx)
+		if rberr != nil {
+			*err = fmt.Errorf("error rolling back: %s: %w", rberr, *err)
+		}
+	}
+}
+
+// RollbackOrCommit is a convenience method for use with defer.
+//
+// It will Rollback on error or otherwise Commit.
+//
+//     defer cache.RollbackOrCommit(tx, &err)
+func (c *Cache) RollbackOrCommit(tx Transaction, err *error) {
+	if *err == nil {
+		_, *err = c.Commit(tx)
+	} else {
+		rberr := c.Rollback(tx)
+		if rberr != nil {
+			*err = fmt.Errorf("error rolling back: %s: %w", rberr, *err)
+		}
+	}
 }
 
 // Mkdir creates a directory in the cache.
 //
-// Commit() must be called with the returned path to atomically
+// Commit() must be called with the returned Transaction to atomically
 // add the created directory to the Cache.
 //
 //     dir, err := cache.Mkdir("my-key")
 //     err = f.Close()
 //     err = cache.Commit(dir)
 func (c *Cache) Mkdir(key string) (Transaction, string, error) {
-	path, err := c.preparePath(key)
+	path, err := c.pathForKey(key)
 	if err != nil {
 		return "", "", err
 	}
@@ -112,14 +145,14 @@ func (c *Cache) Mkdir(key string) (Transaction, string, error) {
 
 // Create a file in the Cache.
 //
-// Commit() must be called with the returned os.File's path to atomically
+// Commit() must be called with the returned Transaction to atomically
 // add the created file to the Cache.
 //
 //     f, err := cache.Create("my-key")
 //     err = f.Close()
 //     err = cache.Commit(f.Name())
 func (c *Cache) Create(key string) (Transaction, *os.File, error) {
-	path, err := c.preparePath(key)
+	path, err := c.pathForKey(key)
 	if err != nil {
 		return "", nil, err
 	}
@@ -128,6 +161,18 @@ func (c *Cache) Create(key string) (Transaction, *os.File, error) {
 		return "", nil, fmt.Errorf("could not create cache directory: %w", err)
 	}
 	return Transaction(filepath.Base(path)), f, nil
+}
+
+// CreateOrRead creates a key if it doesn't exist, or opens it for reading if it does.
+//
+// Use Transaction.Valid() to check if the the key was created.
+func (c *Cache) CreateOrRead(key string) (Transaction, *os.File, error) {
+	path := c.IfExists(key)
+	if path == "" {
+		return c.Create(key)
+	}
+	f, err := c.Open(key)
+	return "", f, err
 }
 
 // Remove cache entry atomically.
@@ -152,12 +197,15 @@ func (c *Cache) Remove(key string) error {
 	return nil
 }
 
-// Path returns the path to a cache entry if it exists.
-func (c *Cache) Path(key string) (string, error) {
+// IfExists returns the path to a cache entry if it exists, or empty string if it does not.
+func (c *Cache) IfExists(key string) string {
 	key = hash(key, false)
 	path := filepath.Join(c.root, key[:2], key)
 	_, err := os.Stat(path)
-	return path, err
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 // Open a file or directory in the Cache.
@@ -205,7 +253,7 @@ func (c *Cache) Purge(older time.Duration) error {
 	})
 }
 
-func (c *Cache) preparePath(key string) (string, error) {
+func (c *Cache) pathForKey(key string) (string, error) {
 	key = hash(key, true)
 	path := filepath.Join(c.root, key[:2], key)
 	err := os.Mkdir(filepath.Dir(path), 0700)

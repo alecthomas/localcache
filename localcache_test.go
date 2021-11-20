@@ -1,6 +1,7 @@
 package localcache
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"path/filepath"
@@ -52,6 +53,18 @@ func TestCache(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"", "/8b", "/9f"}, list(cache))
+}
+
+func TestRollbackOnError(t *testing.T) {
+	cache := NewForTesting(t)
+	tx, _, err := cache.Mkdir("test")
+	require.NoError(t, err)
+	err = func() (err error) {
+		defer cache.RollbackOnError(tx, &err)
+		return fmt.Errorf("function failed")
+	}()
+	require.Error(t, err)
+	require.Equal(t, []string{"", "/9f"}, list(cache))
 }
 
 func list(cache *Cache) (out []string) {
