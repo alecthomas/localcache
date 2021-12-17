@@ -18,7 +18,12 @@ type Transaction string
 // Valid returns true if the Transaction is valid.
 func (t Transaction) Valid() bool { return t != "" }
 
-func (t Transaction) path(root string) string { return filepath.Join(root, string(t)[:2], string(t)) }
+func (t Transaction) path(root string) string {
+	if !t.Valid() {
+		panic("transaction is not valid")
+	}
+	return filepath.Join(root, string(t)[:2], string(t))
+}
 
 // Cache type.
 type Cache struct{ root string }
@@ -51,6 +56,9 @@ func New(name string) (*Cache, error) {
 
 // Commit atomically commits an in-flight file or directory creation Transaction to the Cache.
 func (c *Cache) Commit(tx Transaction) (string, error) {
+	if !tx.Valid() {
+		return "", fmt.Errorf("transaction is not valid")
+	}
 	path := tx.path(c.root)
 	if !strings.HasPrefix(path, c.root) {
 		return "", fmt.Errorf("cannot finalise path outside cache root")
@@ -89,6 +97,9 @@ func (c *Cache) Commit(tx Transaction) (string, error) {
 
 // Rollback reverts an in-flight file or directory creation Transaction.
 func (c *Cache) Rollback(tx Transaction) error {
+	if !tx.Valid() {
+		return fmt.Errorf("transaction is not valid")
+	}
 	path := tx.path(c.root)
 	return os.RemoveAll(path)
 }
@@ -167,11 +178,10 @@ func (c *Cache) Create(key string) (Transaction, *os.File, error) {
 //
 // Use Transaction.Valid() to check if the the key was created.
 func (c *Cache) CreateOrRead(key string) (Transaction, *os.File, error) {
-	path := c.IfExists(key)
-	if path == "" {
+	f, err := c.Open(key)
+	if err != nil {
 		return c.Create(key)
 	}
-	f, err := c.Open(key)
 	return "", f, err
 }
 

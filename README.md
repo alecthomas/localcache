@@ -39,7 +39,7 @@ err := cache.Commit(tx)
 The cache manager maintains transactionality/atomicity by relying on two aspects of Unix filesystems:
 
 1. File renames are atomic.
-2. Symlinks can be atomically overwritten by a symlink rename.
+2. Symlinks can be atomically overwritten by a rename.
 
 The process is then:
 
