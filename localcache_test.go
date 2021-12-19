@@ -75,3 +75,16 @@ func list(cache *Cache) (out []string) {
 	sort.Strings(out)
 	return
 }
+
+func TestPurge(t *testing.T) {
+	cache := NewForTesting(t)
+	for _, text := range []string{"hello", "world", "in", "2021"} {
+		err := cache.WriteFile(text, []byte(text))
+		require.NoError(t, err)
+	}
+	require.Len(t, list(cache), 13)
+	time.Sleep(time.Millisecond * 100)
+	err := cache.Purge(0)
+	require.NoError(t, err)
+	require.Len(t, list(cache), 5) // Just the partitions remain
+}

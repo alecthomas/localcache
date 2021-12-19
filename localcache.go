@@ -3,7 +3,6 @@ package localcache
 import (
 	"crypto/sha256"
 	"fmt"
-	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -174,6 +173,24 @@ func (c *Cache) Create(key string) (Transaction, *os.File, error) {
 	return Transaction(filepath.Base(path)), f, nil
 }
 
+// WriteFile writes a byte slice to a file in the cache.
+func (c *Cache) WriteFile(key string, data []byte) (err error) {
+	tx, w, err := c.Create(key)
+	if err != nil {
+		return err
+	}
+	defer c.RollbackOrCommit(tx, &err)
+	_, err = w.Write(data)
+	if err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	err = w.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+	return nil
+}
+
 // CreateOrRead creates a key if it doesn't exist, or opens it for reading if it does.
 //
 // Use Transaction.Valid() to check if the the key was created.
@@ -233,34 +250,41 @@ func (c *Cache) ReadFile(key string) ([]byte, error) {
 
 // Purge all entries older than the given age.
 func (c *Cache) Purge(older time.Duration) error {
-	return filepath.Walk(c.root, func(path string, info fs.FileInfo, err error) error {
+	partitions, err := filepath.Glob(filepath.Join(c.root, "*"))
+	if err != nil {
+		return fmt.Errorf("could not list partitions: %w", err)
+	}
+	for _, partition := range partitions {
+		entries, err := filepath.Glob(filepath.Join(partition, "*"))
 		if err != nil {
-			return err
+			return fmt.Errorf("could not list entries in %q: %w", partition, err)
 		}
-		ext := filepath.Ext(path)
-		if ext == "" {
-			return nil
+		for _, entry := range entries {
+			ext := filepath.Ext(entry)
+			if ext == "" {
+				continue
+			}
+			hexTimestamp := strings.TrimPrefix(ext, ".")
+			var ts int64
+			_, err = fmt.Sscanf(hexTimestamp, "%x", &ts)
+			if err != nil {
+				return fmt.Errorf("invalid cache entry %q: %w", entry, err)
+			}
+			fileTime := time.Unix(0, ts)
+			if time.Since(fileTime) < older {
+				return nil
+			}
+			err = os.Remove(strings.TrimSuffix(entry, ext))
+			if err != nil {
+				return fmt.Errorf("failed to remove entry link: %w", err)
+			}
+			err = os.RemoveAll(entry)
+			if err != nil {
+				return fmt.Errorf("failed to remove entry: %w", err)
+			}
 		}
-		hexTimestamp := strings.TrimPrefix(ext, ".")
-		var ts int64
-		_, err = fmt.Sscanf(hexTimestamp, "%x", &ts)
-		if err != nil {
-			return fmt.Errorf("invalid cache entry %q: %w", path, err)
-		}
-		fileTime := time.Unix(0, ts)
-		if time.Since(fileTime) < older {
-			return nil
-		}
-		err = os.Remove(strings.TrimSuffix(path, ext))
-		if err != nil {
-			return fmt.Errorf("failed to remove entry link: %w", err)
-		}
-		err = os.RemoveAll(path)
-		if err != nil {
-			return fmt.Errorf("failed to remove entry: %w", err)
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (c *Cache) pathForKey(key string) (string, error) {
