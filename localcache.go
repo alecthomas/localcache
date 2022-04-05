@@ -138,9 +138,8 @@ func (c *Cache) RollbackOrCommit(tx Transaction, err *error) {
 // Commit() must be called with the returned Transaction to atomically
 // add the created directory to the Cache.
 //
-//     dir, err := cache.Mkdir("my-key")
-//     err = f.Close()
-//     err = cache.Commit(dir)
+//     tx, dir, err := cache.Mkdir("my-key")
+//     err = cache.Commit(tx)
 func (c *Cache) Mkdir(key string) (Transaction, string, error) {
 	path, err := c.pathForKey(key)
 	if err != nil {
@@ -158,9 +157,9 @@ func (c *Cache) Mkdir(key string) (Transaction, string, error) {
 // Commit() must be called with the returned Transaction to atomically
 // add the created file to the Cache.
 //
-//     f, err := cache.Create("my-key")
+//     tx, f, err := cache.Create("my-key")
 //     err = f.Close()
-//     err = cache.Commit(f.Name())
+//     err = cache.Commit(tx)
 func (c *Cache) Create(key string) (Transaction, *os.File, error) {
 	path, err := c.pathForKey(key)
 	if err != nil {
@@ -193,7 +192,7 @@ func (c *Cache) WriteFile(key string, data []byte) (err error) {
 
 // CreateOrRead creates a key if it doesn't exist, or opens it for reading if it does.
 //
-// Use Transaction.Valid() to check if the the key was created.
+// Use Transaction.Valid() to check if the key was created.
 func (c *Cache) CreateOrRead(key string) (Transaction, *os.File, error) {
 	f, err := c.Open(key)
 	if err != nil {
