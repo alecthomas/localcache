@@ -14,6 +14,8 @@ import (
 // Transaction key for an uncommitted cache entry.
 type Transaction string
 
+var clock clocker = realClock{}
+
 // Valid returns true if the Transaction is valid.
 func (t Transaction) Valid() bool { return t != "" }
 
@@ -77,16 +79,16 @@ func (c *Cache) Commit(tx Transaction) (string, error) {
 	}
 
 	// Next create a temporary symlink pointing to the new destination.
-	tmpSymlink := fmt.Sprintf("%s.%x", dest, time.Now().UnixNano())
+	tmpSymlink := fmt.Sprintf("%s.%x", dest, clock.Now().UnixNano())
 	err = os.Symlink(path, tmpSymlink)
 	if err != nil {
-		return "", fmt.Errorf("failed to finalise: %w", err)
+		return "", fmt.Errorf("failed to finalise symlink: %w", err)
 	}
 
 	// Then atomically rename the new symlink to the final destination symlink.
 	err = os.Rename(tmpSymlink, dest)
 	if err != nil {
-		return "", fmt.Errorf("failed to finalise: %w", err)
+		return "", fmt.Errorf("failed to finalise rename: %w", err)
 	}
 	if oldDest != "" {
 		_ = os.RemoveAll(oldDest)
@@ -167,7 +169,7 @@ func (c *Cache) Create(key string) (Transaction, *os.File, error) {
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		return "", nil, fmt.Errorf("could not create cache directory: %w", err)
+		return "", nil, fmt.Errorf("could not create cache file: %w", err)
 	}
 	return Transaction(filepath.Base(path)), f, nil
 }
@@ -270,11 +272,11 @@ func (c *Cache) Purge(older time.Duration) error {
 				return fmt.Errorf("invalid cache entry %q: %w", entry, err)
 			}
 			fileTime := time.Unix(0, ts)
-			if time.Since(fileTime) < older {
-				return nil
+			if clock.Since(fileTime) < older {
+				continue
 			}
 			err = os.Remove(strings.TrimSuffix(entry, ext))
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove entry link: %w", err)
 			}
 			err = os.RemoveAll(entry)
@@ -299,7 +301,7 @@ func (c *Cache) pathForKey(key string) (string, error) {
 func hash(key string, timestamp bool) string {
 	h := sha256.Sum256([]byte(key))
 	if timestamp {
-		return fmt.Sprintf("%x.%x", h, time.Now().UnixNano())
+		return fmt.Sprintf("%x.%x", h, clock.Now().UnixNano())
 	}
 	return fmt.Sprintf("%x", h)
 }
