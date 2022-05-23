@@ -1,0 +1,15 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+name: CI
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: ./bin/hermit env --raw >> $GITHUB_ENV
+    - run: go test ./...
+    - run: golangci-lint run

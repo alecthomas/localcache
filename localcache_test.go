@@ -77,14 +77,32 @@ func list(cache *Cache) (out []string) {
 }
 
 func TestPurge(t *testing.T) {
+	globalClock := clock
+	testClock := &fakeClock{currentTime: time.Now()}
+	clock = testClock
+	defer func() { clock = globalClock }()
+
 	cache := NewForTesting(t)
-	for _, text := range []string{"hello", "world", "in", "2021"} {
+	texts := []string{"hello", "world", "in", "2021"}
+	for _, text := range texts {
+		// testClock advances 2 secs for every writeFile
 		err := cache.WriteFile(text, []byte(text))
 		require.NoError(t, err)
 	}
-	require.Len(t, list(cache), 13)
-	time.Sleep(time.Millisecond * 100)
-	err := cache.Purge(0)
+	// clock has advanced 8 seconds
+
+	for _, text := range texts {
+		// all entries must exist
+		require.NotEmpty(t, cache.IfExists(text))
+	}
+	err := cache.Purge(3500 * time.Millisecond) // 3.5 seconds
 	require.NoError(t, err)
-	require.Len(t, list(cache), 5) // Just the partitions remain
+	for _, text := range texts[:2] {
+		// first two entries should have been purged
+		require.Empty(t, cache.IfExists(text))
+	}
+	for _, text := range texts[2:] {
+		// last two entries should still exist
+		require.NotEmpty(t, cache.IfExists(text))
+	}
 }
