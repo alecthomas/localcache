@@ -249,6 +249,20 @@ func (c *Cache) ReadFile(key string) ([]byte, error) {
 	return ioutil.ReadFile(path)
 }
 
+// Purge entry for given key if older than given age.
+func (c *Cache) PurgeKey(key string, older time.Duration) error {
+	key = hash(key, false)
+	path := filepath.Join(c.root, key[:2], key)
+	entry, err := os.Readlink(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil // no entry to be purged
+	}
+	if err != nil {
+		return fmt.Errorf("could not read link for purging: %w", err)
+	}
+	return removeEntry(entry, older)
+}
+
 // Purge all entries older than the given age.
 func (c *Cache) Purge(older time.Duration) error {
 	partitions, err := filepath.Glob(filepath.Join(c.root, "*"))
@@ -261,29 +275,36 @@ func (c *Cache) Purge(older time.Duration) error {
 			return fmt.Errorf("could not list entries in %q: %w", partition, err)
 		}
 		for _, entry := range entries {
-			ext := filepath.Ext(entry)
-			if ext == "" {
-				continue
-			}
-			hexTimestamp := strings.TrimPrefix(ext, ".")
-			var ts int64
-			_, err = fmt.Sscanf(hexTimestamp, "%x", &ts)
-			if err != nil {
-				return fmt.Errorf("invalid cache entry %q: %w", entry, err)
-			}
-			fileTime := time.Unix(0, ts)
-			if clock.Since(fileTime) < older {
-				continue
-			}
-			err = os.Remove(strings.TrimSuffix(entry, ext))
-			if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("failed to remove entry link: %w", err)
-			}
-			err = os.RemoveAll(entry)
-			if err != nil {
-				return fmt.Errorf("failed to remove entry: %w", err)
+			if err := removeEntry(entry, older); err != nil {
+				return err
 			}
 		}
+	}
+	return nil
+}
+
+func removeEntry(entry string, older time.Duration) error {
+	ext := filepath.Ext(entry)
+	if ext == "" {
+		return nil
+	}
+	hexTimestamp := strings.TrimPrefix(ext, ".")
+	var ts int64
+	_, err := fmt.Sscanf(hexTimestamp, "%x", &ts)
+	if err != nil {
+		return fmt.Errorf("invalid cache entry %q: %w", entry, err)
+	}
+	fileTime := time.Unix(0, ts)
+	if clock.Since(fileTime) < older {
+		return nil
+	}
+	err = os.Remove(strings.TrimSuffix(entry, ext))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove entry link: %w", err)
+	}
+	err = os.RemoveAll(entry)
+	if err != nil {
+		return fmt.Errorf("failed to remove entry: %w", err)
 	}
 	return nil
 }

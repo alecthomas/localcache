@@ -106,3 +106,24 @@ func TestPurge(t *testing.T) {
 		require.NotEmpty(t, cache.IfExists(text))
 	}
 }
+
+func TestPurgeKey(t *testing.T) {
+	globalClock := clock
+	testClock := &fakeClock{currentTime: time.Now()}
+	clock = testClock
+	defer func() { clock = globalClock }()
+
+	cache := NewForTesting(t)
+	err := cache.WriteFile("hello", []byte("hello"))
+	require.NoError(t, err)
+
+	err = cache.PurgeKey("hello", 5*time.Second)
+	require.NoError(t, err)
+	// entry should still exist
+	require.NotEmpty(t, cache.IfExists("hello"))
+
+	err = cache.PurgeKey("hello", 0*time.Second)
+	require.NoError(t, err)
+	// entry should be gone
+	require.Empty(t, cache.IfExists("hello"))
+}
