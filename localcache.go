@@ -254,7 +254,7 @@ func (c *Cache) PurgeKey(key string, older time.Duration) error {
 	key = hash(key, false)
 	path := filepath.Join(c.root, key[:2], key)
 	entry, err := os.Readlink(path)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && os.IsNotExist(err) {
 		return nil // no entry to be purged
 	}
 	if err != nil {

@@ -127,3 +127,9 @@ func TestPurgeKey(t *testing.T) {
 	// entry should be gone
 	require.Empty(t, cache.IfExists("hello"))
 }
+
+func TestPurgeKeyMissingEntry(t *testing.T) {
+	cache := NewForTesting(t)
+	err := cache.PurgeKey("missing-dir/missing-entry", 0)
+	require.NoError(t, err)
+}
