@@ -48,7 +48,7 @@ func New(name string) (*Cache, error) {
 		return nil, fmt.Errorf("couldn't locate cache dir: %w", err)
 	}
 	root := filepath.Join(cacheDir, name)
-	err = os.Mkdir(root, 0700)
+	err = os.MkdirAll(root, 0700)
 	if err != nil && !os.IsExist(err) {
 		return nil, fmt.Errorf("couldn't create cache dir: %w", err)
 	}
